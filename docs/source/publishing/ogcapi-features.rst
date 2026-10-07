@@ -46,6 +46,23 @@ parameters.
    Providers that support the configuration option ``count: false`` will 
    not include the ``numberMatched`` property in the ``results`` response.
 
+.. note::
+   For providers that support ``sortby``, the provider option ``default_sortby``
+   sets the order of items queries in which the client sends no ``sortby``,
+   in the same syntax as the query parameter (``+`` ascending, the default, or
+   ``-`` descending, comma-separated). A ``sortby`` sent by the client always
+   wins. Without it, the order is the provider's own (``id_field`` for the
+   SQL providers, which also use ``id_field`` as the last sort key).
+
+   .. code-block:: yaml
+
+      providers:
+          - type: feature
+            name: PostgreSQL
+            # ...
+            id_field: fid
+            default_sortby: collection_id,position
+
 Connection examples
 -------------------
 

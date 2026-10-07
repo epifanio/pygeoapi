@@ -569,6 +569,9 @@ properties:
                                           required:
                                               - x_field
                                               - y_field
+                                      default_sortby:
+                                          type: string
+                                          description: optional default sort order for items queries when the client sends no sortby, in the syntax of the sortby query parameter (e.g. `+name,-datetime`)
                                       time_field:
                                           type: string
                                           description: optional field corresponding to the temporal property of the dataset

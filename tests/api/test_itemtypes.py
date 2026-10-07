@@ -45,7 +45,7 @@ from shapely.geometry import Point
 from pygeoapi.api import API, apply_gzip
 from pygeoapi.api.itemtypes import (
     get_collection_queryables, get_collection_item,
-    get_collection_items, manage_collection_item)
+    get_collection_items, manage_collection_item, parse_sortby)
 from pygeoapi.crs import get_crs
 from pygeoapi.formats import FORMAT_TYPES, F_GZIP, F_HTML, F_JSONLD
 from pygeoapi.util import yaml_load
@@ -737,3 +737,65 @@ def test_get_collection_item_json_ld(config, api_):
     rsp_headers, code, response = get_collection_item(api_, req, 'obs', '371')
     assert rsp_headers['Content-Type'] == FORMAT_TYPES[F_JSONLD]
     assert rsp_headers['Content-Language'] == 'fr-CA'
+
+
+def test_parse_sortby():
+    fields = {'stn_id': {}, 'value': {}}
+    assert parse_sortby('stn_id', fields) == [
+        {'property': 'stn_id', 'order': '+'}]
+    assert parse_sortby('-value,+stn_id', fields) == [
+        {'property': 'value', 'order': '-'},
+        {'property': 'stn_id', 'order': '+'}]
+    for bad in ['', 'nope', 'stn_id,', '-']:
+        with pytest.raises(ValueError):
+            parse_sortby(bad, fields)
+
+
+def test_get_collection_items_default_sortby(config, openapi, monkeypatch):
+    from pygeoapi.provider.csv_ import CSVProvider
+
+    received = []
+    query = CSVProvider.query
+
+    def spy(self, *args, **kwargs):
+        received.append(kwargs.get('sortby'))
+        return query(self, *args, **kwargs)
+
+    monkeypatch.setattr(CSVProvider, 'query', spy)
+
+    config = copy.deepcopy(config)
+    provider = config['resources']['obs']['providers'][0]
+    provider['default_sortby'] = '-value,stn_id'
+    api_ = API(config, openapi)
+
+    rsp_headers, code, response = get_collection_items(
+        api_, mock_api_request(), 'obs')
+    assert code == HTTPStatus.OK
+    assert received[-1] == [{'property': 'value', 'order': '-'},
+                            {'property': 'stn_id', 'order': '+'}]
+
+    # a sortby sent by the client wins
+    rsp_headers, code, response = get_collection_items(
+        api_, mock_api_request({'sortby': 'stn_id'}), 'obs')
+    assert code == HTTPStatus.OK
+    assert received[-1] == [{'property': 'stn_id', 'order': '+'}]
+
+    # a client's bad sortby is still the client's error
+    rsp_headers, code, response = get_collection_items(
+        api_, mock_api_request({'sortby': 'nope'}), 'obs')
+    assert code == HTTPStatus.BAD_REQUEST
+
+    # without default_sortby the provider gets no sortby, as before
+    del provider['default_sortby']
+    api_ = API(config, openapi)
+    rsp_headers, code, response = get_collection_items(
+        api_, mock_api_request(), 'obs')
+    assert code == HTTPStatus.OK
+    assert received[-1] == []
+
+    # a default_sortby naming no field is the server's error
+    provider['default_sortby'] = 'nope'
+    api_ = API(config, openapi)
+    rsp_headers, code, response = get_collection_items(
+        api_, mock_api_request(), 'obs')
+    assert code == HTTPStatus.INTERNAL_SERVER_ERROR

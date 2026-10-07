@@ -486,8 +486,9 @@ class GenericSQLProvider(BaseProvider):
             order_function = asc if sort_by_dict['order'] == '+' else desc
             clauses.append(order_function(model_column))
 
-        # Otherwise sort by primary key (to ensure reproducible output)
-        if not clauses:
+        # Sort by primary key last (to ensure reproducible output, and
+        # stable paging when the requested properties have ties)
+        if self.id_field not in [s['property'] for s in sort_by]:
             clauses.append(asc(getattr(table_model, self.id_field)))
 
         return clauses
