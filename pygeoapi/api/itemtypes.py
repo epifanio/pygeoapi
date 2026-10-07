@@ -234,6 +234,36 @@ def get_collection_queryables(api: API, request: Union[APIRequest, Any],
     return headers, HTTPStatus.OK, to_json(queryables, api.pretty_print)
 
 
+def parse_sortby(value: str, fields: dict) -> list:
+    """
+    Parse a sortby expression (the sortby query parameter, or a provider's
+    default_sortby) into a list of dicts
+
+    :param value: comma-separated properties, each optionally prefixed
+                  with `+` (ascending, the default) or `-` (descending)
+    :param fields: the provider's fields
+
+    :raises ValueError: when a property is not one of the fields
+
+    :returns: list of dicts (property, order)
+    """
+
+    sortby = []
+    for s in value.split(','):
+        prop = s
+        order = '+'
+        if s and s[0] in ['+', '-']:
+            order = s[0]
+            prop = s[1:]
+
+        if prop not in fields.keys():
+            raise ValueError(f'bad sortby property: {prop}')
+
+        sortby.append({'property': prop, 'order': order})
+
+    return sortby
+
+
 def get_collection_items(
         api: API, request: Union[APIRequest, Any],
         dataset: str | None = None) -> Tuple[dict, int, str]:
@@ -442,22 +472,23 @@ def get_collection_items(
     val = request.params.get('sortby')
 
     if val is not None:
-        sortby = []
-        sorts = val.split(',')
-        for s in sorts:
-            prop = s
-            order = '+'
-            if s and s[0] in ['+', '-']:
-                order = s[0]
-                prop = s[1:]
-
-            if prop not in p.fields.keys():
-                msg = 'bad sortby property'
-                return api.get_exception(
-                    HTTPStatus.BAD_REQUEST, headers, request.format,
-                    'InvalidParameterValue', msg)
-
-            sortby.append({'property': prop, 'order': order})
+        try:
+            sortby = parse_sortby(val, p.fields)
+        except ValueError:
+            msg = 'bad sortby property'
+            return api.get_exception(
+                HTTPStatus.BAD_REQUEST, headers, request.format,
+                'InvalidParameterValue', msg)
+    elif provider_def.get('default_sortby'):
+        LOGGER.debug('No sortby requested; using the default_sortby')
+        try:
+            sortby = parse_sortby(provider_def['default_sortby'], p.fields)
+        except ValueError:
+            msg = 'bad default_sortby property in configuration'
+            LOGGER.error(f'{dataset}: {msg}')
+            return api.get_exception(
+                HTTPStatus.INTERNAL_SERVER_ERROR, headers, request.format,
+                'NoApplicableCode', msg)
     else:
         sortby = []
 

@@ -260,6 +260,7 @@ default.
                 # optional fields
                 uri_field: uri  # field corresponding to the Uniform Resource Identifier (see Linked Data section)
                 time_field: datetimestamp  # field corresponding to the temporal property of the dataset
+                default_sortby: -datetimestamp,stn_id  # items order when the client sends no sortby, in the sortby query parameter's syntax (providers that support sortby)
                 title_field: foo  # field of which property to display as title/label on HTML pages
                 default: true  # if not specified, the first provider definition is considered the default
                 properties:  # if specified, return only the following properties, in order

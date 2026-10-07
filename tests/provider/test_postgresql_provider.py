@@ -1010,3 +1010,64 @@ def test_provider_count_false_with_resulttype_hits(config):
 
     # Assert
     assert results['numberMatched'] == 14776
+
+
+def test_query_sortby_id_field_breaks_ties(config):
+    """Test that id_field orders features whose sort keys are equal"""
+    psp = PostgreSQLProvider(config)
+    rivers = psp.query(properties=[('waterway', 'river')],
+                       sortby=[{'property': 'waterway', 'order': '+'}],
+                       limit=500)
+    ids = [f['id'] for f in rivers['features']]
+    assert len(ids) == 436
+    assert ids == sorted(ids)
+
+    names = psp.query(sortby=[{'property': 'name', 'order': '+'}], limit=5)
+    assert [f['id'] for f in names['features']] == [
+        128115637, 128115638, 298048917, 126696869, 345068152]
+
+
+@pytest.fixture()
+def pg_api_default_sortby(openapi):
+    with open(get_test_file_path('pygeoapi-test-config-postgresql.yml')) as fh:
+        config = yaml_load(fh)
+    provider = config['resources']['hot_osm_waterways']['providers'][0]
+    provider['default_sortby'] = 'name'
+    return API(config, openapi)
+
+
+def test_get_collection_items_postgresql_default_sortby(
+        pg_api_default_sortby):
+    """Test the provider's default_sortby, and a client sortby over it"""
+    req = mock_api_request({'limit': 5})
+    rsp_headers, code, response = get_collection_items(
+        pg_api_default_sortby, req, 'hot_osm_waterways')
+    assert code == HTTPStatus.OK
+    features = json.loads(response)['features']
+    assert [f['properties']['name'] for f in features] == [
+        'Agasasa', 'Agasasa', 'Agatobwe', 'Akagera', 'Akagera']
+    assert [f['id'] for f in features] == [
+        128115637, 128115638, 298048917, 126696869, 345068152]
+
+    req = mock_api_request({'limit': 2, 'offset': 3})
+    rsp_headers, code, response = get_collection_items(
+        pg_api_default_sortby, req, 'hot_osm_waterways')
+    assert [f['id'] for f in json.loads(response)['features']] == [
+        126696869, 345068152]
+
+    req = mock_api_request({'limit': 1, 'sortby': 'osm_id'})
+    rsp_headers, code, response = get_collection_items(
+        pg_api_default_sortby, req, 'hot_osm_waterways')
+    assert code == HTTPStatus.OK
+    assert json.loads(response)['features'][0]['id'] == 13990765
+
+
+def test_get_collection_items_postgresql_bad_default_sortby(
+        pg_api_default_sortby):
+    """Test that a default_sortby naming no field is a server error"""
+    resource = pg_api_default_sortby.config['resources']['hot_osm_waterways']
+    resource['providers'][0]['default_sortby'] = 'name,nonexistent'
+    req = mock_api_request()
+    rsp_headers, code, response = get_collection_items(
+        pg_api_default_sortby, req, 'hot_osm_waterways')
+    assert code == HTTPStatus.INTERNAL_SERVER_ERROR
